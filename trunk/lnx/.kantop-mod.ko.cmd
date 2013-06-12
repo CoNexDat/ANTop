@@ -1,0 +1,1 @@
+cmd_/home/mariana/Development/ANTop/lnx/kantop-mod.ko := ld -r -m elf_x86_64 -T /usr/src/linux-3.2/scripts/module-common.lds --build-id  -o /home/mariana/Development/ANTop/lnx/kantop-mod.ko /home/mariana/Development/ANTop/lnx/kantop-mod.o /home/mariana/Development/ANTop/lnx/kantop-mod.mod.o
