@@ -6,12 +6,28 @@
 #include "defs.h"
 #include "timer_queue.h"
 
+#include <sys/socket.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <net/if.h>
+#include <unistd.h>
+
 
 struct recovered_addr *rcvd_addr;
 struct in6_addr prim_addr;
 struct in6_addr sec_addr;
+struct in6_addr root;//pablo2
 unsigned char prim_mask;
 unsigned char sec_mask;
+extern unsigned char red_numero;//pablo
+extern unsigned char prim_mask_inicial;//pablo2
+extern unsigned char sec_mask_inicial;//pablo2
+extern int flag_mezcla;//pablo
+extern int flag_mezcla_primaria;//pablo3
+extern int flag_mezcla_secundaria;//pablo3
+extern int flag_fragmentacion;//pablo2
+extern int flag_fragmentacion_primaria;//pablo2
+extern int flag_fragmentacion_secundaria;//pablo2
 int sec_addr_flag = 0;
 int prim_addr_flag;
 extern int hc_dim;
@@ -22,11 +38,17 @@ extern struct neighbor *neigh_table;
 //proposition
 int addr_avai=1;
 struct in6_addr *rcvd_offered = NULL;
+struct neighbor_to_root neighbor_to_root;//pablo
+struct in6_addr dir_default;//pablo3
+extern int flag_neigh_by_second;//pablo4
+int flag_conexion; //pablo6 //Este flag se utiliza para ver si esta en el proceso de conexion por medio de paquetes PAR,PAP,PAN y PANC
 
 
 
 
 int prim_addr_init(){
+
+   struct neighbor_to_root *aux=malloc(sizeof(neighbor_to_root));//pablo
 
     memset(&prim_addr, 0, sizeof(struct in6_addr));
 /*
@@ -34,15 +56,36 @@ int prim_addr_init(){
     prim_addr.s6_addr16[7] = 0x0100;
 */
     prim_addr.s6_addr16[0] = 0x0120;
+    prim_addr.s6_addr16[1] = 0xb80d;//pablo3
     prim_addr.s6_addr16[7] = 0x0100;
+
+    memcpy(&root,&prim_addr,sizeof(struct in6_addr));
 
     memset(&sec_addr, 0, sizeof(struct in6_addr));
 
+    memset(aux,0,sizeof(struct neighbor_to_root));//pablo
+    aux->distance=99;//pablo
+
+    memcpy(&neighbor_to_root,aux,sizeof(struct neighbor_to_root));//pablo
+
+    memset(&dir_default,0,sizeof(struct in6_addr));//pablo3
+    dir_default.s6_addr16[0]=0x0120;//pablo3
+    dir_default.s6_addr16[1]=0xb80d;//pablo3
+    dir_default.s6_addr16[7]=0x0a00;//pablo3
+
     prim_addr_flag = 0;
-    
+    red_numero=0;//rand()%100;   //pablo
+    flag_mezcla=0;//pablo
+    flag_mezcla_primaria=0;//pablo2
+    flag_mezcla_secundaria=0;//pablo2
+    flag_fragmentacion=0;//pablo2
+    flag_fragmentacion_primaria=0;//pablo2
+    flag_fragmentacion_secundaria=0;//pablo2
     prim_mask = 0;
     sec_mask = 0;
     rcvd_addr = NULL;
+    flag_neigh_by_second=0;//pablo4
+    flag_conexion=0;//pablo6
     return 0;
 }
 
@@ -100,6 +143,7 @@ int send_pap(int sock, struct in6_addr dst){
             fprintf(stderr, "Recovered address: %s; MASK: %d", ip6_to_str(rcvd_aux->prim_addr), rcvd_aux->prim_mask);
         }        
         memcpy(&(antop_msg->ad_addr.addr), &(rcvd_aux->prim_addr), sizeof(struct in6_addr));
+        antop_msg->ad_addr.red_numero = red_numero; //pablo
         antop_msg->ad_addr.mask = rcvd_aux->prim_mask;
         antop_msg->prim_addr_len = hc_dim;
         rcvd_offered = malloc(sizeof(struct in6_addr));
@@ -122,8 +166,9 @@ int send_pap(int sock, struct in6_addr dst){
     }else{
         
 
-    if( prim_mask >= hc_dim )
-        antop_msg->ad_addr.mask = 0;
+    if( prim_mask >= hc_dim ){
+        antop_msg->ad_addr.red_numero = red_numero;//pablo
+        antop_msg->ad_addr.mask = 0;}
     else{
 
         memcpy(&(antop_msg->ad_addr.addr), &prim_addr, sizeof(struct in6_addr));
@@ -162,7 +207,7 @@ int send_pap(int sock, struct in6_addr dst){
         //*************************************************************
 
 
-
+        antop_msg->ad_addr.red_numero = red_numero;//pablo
         antop_msg->ad_addr.mask = prim_mask +1;
         antop_msg->prim_addr_len = hc_dim;
 
@@ -205,7 +250,10 @@ int send_panc(int sock, struct in6_addr dst, struct in6_addr primary, struct in6
     if(rcvd_offered == NULL || ((rcvd_offered != NULL) && (memcmp(&chosen_addr, rcvd_offered, sizeof(struct in6_addr)))))
         prim_mask++;
     else if(!memcmp(&chosen_addr, rcvd_offered, sizeof(struct in6_addr))){
-        // The recovered address has been chosen
+  		del_rcvd_addr_table(rcvd_offered);//pablo4
+     
+/*//pablo4
+	// The recovered address has been chosen
         for(prev = NULL, rcvd_aux = rcvd_addr; rcvd_aux->next != NULL; prev = rcvd_aux, rcvd_aux = rcvd_aux->next);
         if(prev == NULL){
             // It means that the last one is the first entry
@@ -217,7 +265,7 @@ int send_panc(int sock, struct in6_addr dst, struct in6_addr primary, struct in6
             prev->next = NULL;
             free(rcvd_aux);
         }
-
+*///pablo4
     }
 
 
@@ -232,19 +280,20 @@ int send_panc(int sock, struct in6_addr dst, struct in6_addr primary, struct in6
 
 
 
-int send_par(struct in6_addr *src, int sock){
+int send_par(struct in6_addr *src, int sock, struct in6_addr *dst_mezcla){ 
 
-    struct ctrl_pkt *par = NULL;
-    struct in6_addr destination = IN6ADDR_ANY_INIT;
+    struct ctrl_pkt *par;
 
-    par = (ctrl_pkt*) malloc(sizeof(struct ctrl_pkt));
+    par = malloc(sizeof(struct ctrl_pkt));
 
     u_int8_t hop_l;
     hop_l = 20;    
     par->pkt_type_f = PAR;
     
-    memcpy(&(par->src_addr), src, sizeof(struct in6_addr));
+    memcpy(&(par->src_addr),src,sizeof(struct in6_addr));
 
+    struct in6_addr destination;
+   
 /*
     MULTICAST ADDRESS
 */
@@ -269,7 +318,7 @@ int send_par(struct in6_addr *src, int sock){
 int receive_pap(int sock, struct ctrl_pkt ** antop_msg1){
 
     struct ctrl_pkt *antop_msg;       
-    unsigned char aux;
+    unsigned char aux; 
     if(antop_msg = malloc(sizeof(struct ctrl_pkt)) == NULL){
         
         fprintf(stderr,"Couldn't locate space for antop_msg \n");
@@ -278,7 +327,7 @@ int receive_pap(int sock, struct ctrl_pkt ** antop_msg1){
     
     if(antop_socket_read(sock, (unsigned char **)&(antop_msg))<0)
         return -1;    
-    
+    	
     aux= antop_msg->pkt_type_f;
     fprintf(stderr,"Receive PAP pkt_type: %u \n",antop_msg->pkt_type_f);
 /*
@@ -294,7 +343,8 @@ int receive_pap(int sock, struct ctrl_pkt ** antop_msg1){
 
     fprintf(stderr,"PKT TYPE: %u \n",antop_msg->pkt_type_f);
     fprintf(stderr,"MASK: %u \n",antop_msg->ad_addr.mask);
-
+    red_numero=antop_msg->ad_addr.red_numero; //pablo
+	
     if( antop_msg->pkt_type_f == PAP && antop_msg->ad_addr.mask)
         return 0;
     else
@@ -313,6 +363,8 @@ int send_pan(struct in6_addr *addr, int sock, struct in6_addr *chosen_addr){
     memset(pan, 0, sizeof(struct ctrl_pkt));
 
     memcpy(&(pan->ad_addr.addr), addr, sizeof(struct in6_addr));
+
+    pan->ad_addr.red_numero=red_numero;//pablo
 
     // Here prim_addr holds the chosen addr.
     memcpy(&(pan->prim_addr), chosen_addr, sizeof(struct in6_addr));
@@ -408,51 +460,50 @@ start:    i = N_PAR;
     FD_ZERO(&read_fd);
     FD_SET(sock, &read_fd);
 
-
-
     while(i>0){
-
-        send_par(src, sock);
+        send_par(src, sock,NULL);
         set_timer(&tv,T_PAP);
         printf("PAR sent. Waiting for PAPs.\n");
-        fprintf(stderr, "PAR sent. Waiting for PAPs.\n");
-
         while(1){
-            
-            if((n = select(sock+1, &read_fd, NULL, NULL, &timeout))<0)     
+            if((n = select(sock+1, &read_fd, NULL, NULL, &timeout))<0) // "sock+1" es el numero maximo de sockets a chequear"
+                                                                       //"&read_fd" chequear ver si cualquier socket esta listo para ser leido
+									//"&timeout" es el tiempo que caduca la funcion. 
+									//return 0: no leyo ningun socket en el tiempo timeout
+									//return -1: error   ; return >0 llego algun socket correctamente  
 
                 fprintf(stderr,"main.c: Failed select (get primary address) \n");
 
             if(n>0){
-            
-            if( FD_ISSET( sock, &read_fd ))                     
-
+            if(FD_ISSET( sock, &read_fd ))
                 rec_pap = receive_pap(sock, &antop_msg);
                 
                 if(rec_pap == 0){
+                    //Comienza el proceso de conexion //pablo6
+                    flag_conexion=1;//pablo6
                     recvd_paps++;
                     v_pap[j] = malloc(sizeof(struct ctrl_pkt));
                     memcpy(v_pap[j], antop_msg, sizeof(struct ctrl_pkt));  
                     fprintf(stderr,"PRIM ADDR: %s \n", ip6_to_str(v_pap[j]->prim_addr));
-
                     j++;
-                } else if(rec_pap == 1)
-                    recvd_paps == NO_ADDR_AVLB;
+                } else if(rec_pap == 1){
+                    recvd_paps == NO_ADDR_AVLB;}
 
-                else if(rec_pap == -1)
-                    recvd_paps = NULL_ADDR_SET;
+                else if(rec_pap == -1){
+                    recvd_paps = NULL_ADDR_SET;}
                 
             }
             if (check_timer(tv,T_PAP)==1){
-                printf("PAPs received: %u\n",recvd_paps);       // recvd_paps: available addresses
-                fprintf(stderr, "PAPs received: %u\n",recvd_paps);       // recvd_paps: available addresses
+              if(recvd_paps==0)//pablo
+                  red_numero=mac_address();//(rand()%10)*10;//pablo
+              printf("PAPs received: %u\n",recvd_paps);       // recvd_paps: available addresses
                 break;
             }
+            
             if (j >= MAX_RCVD_PAP)
                 break;
         }
         i--;
-        if(recvd_paps > 0)
+	if(recvd_paps > 0)
             break;
     }
 
@@ -460,7 +511,7 @@ start:    i = N_PAR;
      *  recvd_paps > 0 means that there are available adresses. Then search
      *  for the one with the lowest mask
      */
-
+	
     if(recvd_paps > 0){
         
         mask_index = 0;
@@ -478,14 +529,15 @@ start:    i = N_PAR;
         }
         fprintf(stderr,"La direcciòn elegida es %s con máscara %u \n",ip6_to_str(v_pap[mask_index]->ad_addr.addr),mask_min);
 
-
         fprintf(stderr, "Sending PAN \n");
 //        send_pan(&(v_pap[mask_index]->ad_addr.addr), sock);
+
+        //Set the red_numero //pablo6
+        red_numero=v_pap[mask_index]->ad_addr.red_numero;//pablo6
 
         /*
          * We send the address of the node from which we choose our new address.
          */
-        
         send_pan(&(v_pap[mask_index]->prim_addr), sock, &(v_pap[mask_index]->ad_addr.addr));
 
 
@@ -503,8 +555,8 @@ start:    i = N_PAR;
 
         if(n>0){
 
-            if( FD_ISSET( sock, &read_fd )){                     
-
+            if(FD_ISSET( sock, &read_fd )){                     
+		
                  antop_socket_read(sock, (unsigned char **)&(antop_msg));
 
                  fprintf(stderr,"AD ADDR: %s \n", ip6_to_str(antop_msg->ad_addr.addr));
@@ -531,12 +583,19 @@ start:    i = N_PAR;
                      
                      memcpy(&(hb.prim_addr), &(v_pap[mask_index]->prim_addr), sizeof(struct in6_addr));
                      hb.ad_addr.mask = v_pap[mask_index]->ad_addr.mask;
-                     process_hb(&hb);
+
+		     process_hb(&hb);
                      memcpy(&prim_addr, &(v_pap[mask_index]->ad_addr.addr), sizeof(struct in6_addr));
                      
                      //Set the Hipercube Dimension as the predecesor
                      hc_dim=v_pap[mask_index]->prim_addr_len;
+		     //Set the prim_mask
                      prim_mask = v_pap[mask_index]->ad_addr.mask;
+		     //Set the prim_mask_inicial //pablo6
+		     prim_mask_inicial=mask_min;//pablo6
+                     //Termina el proceso de conexion //pablo6
+                     flag_conexion=0;//pablo6
+
                      return ADDR_OK;
                  }
             }
@@ -560,10 +619,11 @@ start:    i = N_PAR;
         
     set_if_addr2(&prim_addr/*, ifindex*/, 1);
     prim_mask = 0;
+    prim_mask_inicial=0;//pablo2
     return NULL_ADDR_SET;
 }
 
-void san_t_handler(){
+void san_t_handler1(){
     fprintf(stderr,"The SAN timer has expired\n");
     if(!addr_avai)
         addr_avai =1;
@@ -598,13 +658,14 @@ void send_sap(int sock, struct in6_addr *dst, struct in6_addr *sec_addr, int sec
     memcpy(&(antop_msg->ad_addr.addr), sec_addr, sizeof(struct in6_addr));
     antop_msg->ad_addr.mask = sec_mask;
     antop_msg->prim_addr_len = hc_dim;
+    antop_msg->ad_addr.red_numero=red_numero;//pablo3
 
     san_t = malloc(sizeof(struct timer));
     if(san_t == NULL){
         fprintf(stderr,"Could not locate space for the timer in send sap\n");
         return;
     }
-    san_t->handler = &san_t_handler;
+    san_t->handler = &san_t_handler1;
 
     san_t->used = 0;
     timer_add_msec(san_t, T_SAN);
@@ -756,6 +817,7 @@ void chk_sec_addr(struct neighbor *neigh){
 	.                   Optional Headers            .
 	|_______________________________________________|
 */
+
 
 
 

@@ -50,6 +50,7 @@ static int nr_callbacks = 0;
 
 extern struct in6_addr prim_addr;
 extern unsigned char prim_mask;
+extern unsigned char red_numero;//pablo
 extern int prim_addr_flag;
 int ifindex;
 int hc_dim;
@@ -58,7 +59,7 @@ int socket_global;
 int socket_global_mdns;
 int socket_global_dns;
 int pkt_socket;
-
+int flag_init=0;//pablo6
 
 int attach_callback_func(int fd, callback_func_t func, void *data)
 {
@@ -93,7 +94,7 @@ void load_modules(char *ifname)
     memset(buf, '\0', 64);                                                     
                                                                                
 //    if (stat("./lnx/kantop.ko", &st) == 0)
-//	sprintf(buf,"/sbin/insmod ./lnx/kantop.ko");
+	sprintf(buf,"/sbin/insmod ./lnx/kantop.ko");
                                                                                 
                                                                                 
 //    else
@@ -110,7 +111,7 @@ void load_modules(char *ifname)
     m = fopen("/proc/modules", "r");
     while (fgets(buf, sizeof(buf), m)) {
 	l = strtok(buf, " \t");
-	if (!strcmp(l, "kantop_mod"))
+	if (!strcmp(l, "kantop"))
 	    found++;
 	if (!strcmp(l, "ipchains")) {
 	    fprintf(stderr,"The ipchains kernel module is loaded and prevents antop-UU from functioning properly.\n");
@@ -142,7 +143,7 @@ void dns_neighbor_add()
     memset(buf, '\0', 64);                                                     
                                                                                
 //    if (stat("./lnx/kantop.ko", &st) == 0)
-	sprintf(buf,"ip neigh add 2001::c lladdr aa:aa:aa:aa:aa:aa dev eth1");
+	sprintf(buf,"ip neigh add 2001:db8:0:0:0:0:0:c lladdr aa:aa:aa:aa:aa:aa dev eth1");
 //        sprintf(buf,"ip neigh add 2001::a lladdr bb:bb:bb:bb:bb:bb dev eth0");
                                                                                 
                                                                                 
@@ -171,19 +172,14 @@ int main(int argc, char **argv){
 	int		ipi6_ifindex;
     };
 
-    struct in6_addr dest_addr = IN6ADDR_ANY_INIT;
-    struct in6_addr src_addr = IN6ADDR_ANY_INIT;                   
+    struct in6_addr dest_addr, src_addr;           
     char buf[4096] __attribute__ ((aligned));
-    struct nfq_q_handle *qh = NULL;
-    int fd = 0;
-    int rv = 0;
-    int i = 0;
-    int nfds = 0;
-    int n = 0;
-    int option = 0;
-    char *ifname = NULL;
+    struct nfq_q_handle *qh;
+    int fd,rv,i,nfds,n;
+    int option;
+    char *ifname= NULL;
     struct timeval *timeout;
-    
+
     if(argc != 4){
         fprintf(stderr,"\n");
         fprintf(stderr,"Usage: antopd interface universal_address hypercube_dimension\n");
@@ -258,8 +254,7 @@ int main(int argc, char **argv){
     struct in6_addr *if_addr = malloc(sizeof(struct in6_addr));
 
     socket_global_mdns = antop_socket_init_mdns(ifindex);
-    fprintf(stderr,"returns from antop_socket_init_mdns %d \n", socket_global_mdns);
-    
+
     socket_global = antop_socket_init(ifindex);
     
     socket_global_dns = antop_socket_init_dns(ifindex);
@@ -293,13 +288,13 @@ int main(int argc, char **argv){
 
     prim_addr_flag = 1;
 
-    load_modules(ifname);
+    load_modules(ifname);  
 
     pkt_socket = pkt_hdlr_init();
 
     dns_neighbor_add();
 
-    rt_info_init();           
+    rt_info_init();
     
 //    memcpy(&prim_addr,if_addr, sizeof(struct in6_addr));
     
@@ -308,7 +303,7 @@ int main(int argc, char **argv){
     fprintf(stderr, "The universal address is %s, with length %d\n", univ_addr, strlen(univ_addr));
     
     fprintf(stderr, "The dimension is %d\n", hc_dim);
-
+    
     heart_beat_init(&socket_global);
 
     fprintf(stderr, "Heart beats have already been initialized \n");
@@ -318,14 +313,11 @@ int main(int argc, char **argv){
     fprintf(stderr, "Las tablas RV ya fueron inicializadas \n");
 
     //Register periodically to the RV server.
-    timer_rv_init(socket_global);
+    timer_rv_init(socket_global); //Pablo Torrado (Aca puedo deshabilitar el timer de envios de paquetes RV)
 
+    flag_init=1;//pablo6
 
-
-
-
-
-////    register_rv();
+    //register_rv(); //Pablo Torrado (Habilite el servicio de registracion rendez vous)
     
     // These are file descriptor sets.
     fd_set read_fd, rfds;

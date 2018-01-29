@@ -31,6 +31,15 @@ extern int ifindex;
 int antop_socket_read(int fd, unsigned char **antop_msg);
 
 extern struct in6_addr prim_addr;
+extern int flag_mezcla;//pablo
+extern int flag_fragmentacion;//pablo2
+extern unsigned char red_numero;//pablo
+extern int prim_addr_flag;//pablo2
+extern int sec_addr_flag;//pablo3
+extern struct in6_addr dir_default; //pablo8
+extern struct in6_addr prim_addr_aux; //pablo8
+
+
 
 int  antop_socket_init(int ifindex)
 {
@@ -47,10 +56,12 @@ int  antop_socket_init(int ifindex)
     int if_index;
     int sock;
     struct in6_pktinfo pkt_info;
-    struct in6_addr if_address = IN6ADDR_ANY_INIT;;
-    char aux[5];
-
-    char *ifname = &aux; 
+    struct in6_addr if_address;
+    
+    char *aux;     //Pablo Torrado
+    aux=malloc(IFNAMSIZ);	//Pablo Torrado
+    char *ifname = aux;   //Pablo Torrado
+ 
     memset(ifname, 0, 5);
     ifname = if_indextoname(ifindex, ifname);
    
@@ -69,6 +80,9 @@ int  antop_socket_init(int ifindex)
     antop_addr.sin6_family = AF_INET6;
     antop_addr.sin6_port = htons(ANTOP_PORT);
     antop_addr.sin6_addr = in6addr_any;
+
+
+    
 
     retval = bind(sock, (struct sockaddr_in6 *) &antop_addr, sizeof(antop_addr));
 
@@ -184,18 +198,19 @@ void antop_socket_send(unsigned char *antop_msg, struct in6_addr dst, int len, u
 {
     int retval = 0;
     struct sockaddr_in6 dst_addr;
-    int hop_limit_send = 0;
+    int hop_limit_send;
     struct iovec iov[1];
     struct msghdr msg;
-    struct cmsghdr *cmsg = NULL;
-    int cmsglen = 0;
+    struct cmsghdr *cmsg;
+    int cmsglen;
     struct in6_pktinfo pinfo;
-    struct in6_addr if_addr = IN6ADDR_ANY_INIT;;
+    struct in6_addr if_addr;
 
-    memset(&msg, 0, sizeof(msg));
+    if(prim_addr_flag==1) //pablo2
+	memcpy(&if_addr,&prim_addr,sizeof(struct in6_addr));//pablo2
+    else //pablo2
+    	get_if_addr(&if_addr);
 
-    
-    get_if_addr(&if_addr);
     fprintf(stderr, "%s \n", ip6_to_str(if_addr));
     hop_limit_send = hop_limit;
 /*
@@ -253,16 +268,13 @@ void antop_socket_send(unsigned char *antop_msg, struct in6_addr dst, int len, u
 
 
 	retval = sendmsg(sock, &msg, 0);
-	
-	    
+
 	if (retval < 0) {	  
 
 	    fprintf(stderr,"antop_socket_send (UNICAST): Failed send to %s \n", ip6_to_str(dst));
             fprintf(stderr,"The error code is %d", retval);
 
 	    return;
-	} else {
-	    fprintf(stderr,"antop_socket_send (UNICAST): Ok sent to %s \n", ip6_to_str(dst));
 	}
 
         
@@ -284,10 +296,12 @@ int antop_process_pkt(int fd, unsigned char *antop_msg){
             break;
 
         case PAP:
-            fprintf(stderr,"se recibio un paquete de tipo PAP \n");
-            break;
+            fprintf(stderr,"se recibio un paquete de tipo PAP \n");            
+	    break;
 
         case PAN:
+            if((((struct ctrl_pkt *)antop_msg)->ad_addr.red_numero) != red_numero)//pablo6   //todo PAN de un nodo de otra red, no se acepta
+		return; //pablo6
             fprintf(stderr,"se recibio un paquete de tipo PAN \n");
             fprintf(stderr, "PPPPANC enviara a %s\n",ip6_to_str(((struct ctrl_pkt *)antop_msg)->src_addr));
             if(memcmp(&prim_addr, &(((struct ctrl_pkt *)antop_msg)->ad_addr.addr), sizeof(struct in6_addr)) == 0){
@@ -295,11 +309,12 @@ int antop_process_pkt(int fd, unsigned char *antop_msg){
             }
             break;
         case HB:
+	    if(flag_fragmentacion == 1  ||  flag_mezcla == 1 )  //pablo2  //pablo3
+		return; //pablo2
             fprintf(stderr, "Se recibio un HB \n");
             process_hb(((struct ctrl_pkt *)antop_msg));
-            
-
             break;
+
         case RV_REG:
             fprintf(stderr,"Se recibio un paquete de tipo RV_REG\n");
             rv_table_add((struct rv_ctrl_pkt *)antop_msg);
@@ -312,7 +327,7 @@ int antop_process_pkt(int fd, unsigned char *antop_msg){
 
         case RV_ADDR_SOLVE:
             fprintf(stderr,"A RV query response has been received\n");                       
-
+	    //fprintf(stderr,"el valor resuelto es: %s\n",ip6_to_str(((struct rv_ctrl_pkt*)antop_msg)->prim_addr)); getchar();   
             // In this case the second and third parameter (destintation port and packet size)
             // are zero, we will get this values from que dns query queue.
             // We will compare the universal address in antop_msg with the ones in the queue, so we know "who"
@@ -332,13 +347,70 @@ int antop_process_pkt(int fd, unsigned char *antop_msg){
             break;
 
         case SAP:
+	    if((((struct ctrl_pkt *)antop_msg)->ad_addr.red_numero) != red_numero)//pablo3   //todo SAP de un nodo de otra red, no se acepta
+		return; //pablo3
+	    if(flag_fragmentacion == 1  ||  flag_mezcla == 1  )//pablo2 //pablo3
+		return;//pablo2
             fprintf(stderr,"A secondary address proposal has been received\n");
-            process_sap((struct ctrl_pkt *)antop_msg);
+            process_sap1((struct ctrl_pkt *)antop_msg); //process_sap((struct ctrl_pkt *)antop_msg); //pablo4
             break;
 
         case SAN:
             fprintf(stderr,"A SAN packet has been received\n");
-            process_san((struct ctrl_pkt *)antop_msg);
+            process_san1((struct ctrl_pkt *)antop_msg); //process_san((struct ctrl_pkt *)antop_msg); //pablo4
+	    return;//pablo2
+
+	case FAR: //pablo2
+	    fprintf(stderr,"A FAR packet has been received\n");//pablo2
+            process_far((struct ctrl_pkt *)antop_msg);//pablo2
+	    return;//pablo2
+
+	case FAN: //pablo2
+	     fprintf(stderr,"A FAN packet has been received\n");//pablo2
+	     process_fan((struct ctrl_pkt *)antop_msg);//pablo2
+	     return;//pablo2
+
+	case MAR1: //pablo3
+	     if( ((((struct ctrl_pkt *)antop_msg)->ad_addr.red_numero) == red_numero) && !memcmp(&prim_addr,&dir_default,sizeof(struct in6_addr)) ){//pablo8
+            	del_and_addnew(&prim_addr,&prim_addr_aux,2);//pablo8
+		sleep(2);//pablo8
+		memcpy(&prim_addr,&prim_addr_aux,sizeof(struct in6_addr));//pablo8
+		flag_mezcla=0;//pablo8
+				}
+	     if( (((((struct ctrl_pkt *)antop_msg)->ad_addr.red_numero) != red_numero) || sec_addr_flag==1)   &&  !memcmp(&(((struct ctrl_pkt *)antop_msg)->ad_addr.addr),&prim_addr,sizeof(struct in6_addr)) ){  //pablo3 //pablo7   solo se acepta MAR de otra red, ya que puede darse el caso que a la direccion que le quiero enviar el MAR estan en mi red o mismo el nodo emisor tiene esa direccion y lo envia a otro nodo o se lo autoenvia.
+	     fprintf(stderr,"A MAR1 packet has been received\n");//pablo3
+	     process_mar1((struct ctrl_pkt *)antop_msg);//pablo3
+	     return;//pablo3
+	     } //pablo3
+	     else return;  //pablo3		
+
+
+	case MAR2: //pablo3
+	     if( ((((struct ctrl_pkt *)antop_msg)->ad_addr.red_numero) != red_numero) || sec_addr_flag==1 ){  //pablo3   solo se acepta MAR de otra red, ya que puede darse el caso que a la direccion que le quiero enviar el MAR estan en mi red o mismo el nodo emisor tiene esa direccion y lo envia a otro nodo o se lo autoenvia.
+	     fprintf(stderr,"A MAR2 packet has been received\n");//pablo3
+	     process_mar2((struct ctrl_pkt *)antop_msg);//pablo3
+	     return;//pablo3
+	     } //pablo3
+	     else return;  //pablo3
+
+
+	case MAN1: //pablo3
+	     if((((struct ctrl_pkt *)antop_msg)->ad_addr.red_numero) == red_numero){ //pablo3  solo se aceptan los MAN de la misma red, para mas seguridad 
+	     fprintf(stderr,"A MAN1 packet has been received\n");//pablo3
+	     process_man1((struct ctrl_pkt *)antop_msg);//pablo3
+	     return;//pablo3
+	     } //pablo3
+	     else return; //pablo3
+
+	case MAN2: //pablo3
+	     if((((struct ctrl_pkt *)antop_msg)->ad_addr.red_numero) == red_numero){ //pablo3  solo se aceptan los MAN de la misma red, para mas seguridad 
+	     fprintf(stderr,"A MAN2 packet has been received\n");//pablo3
+	     process_man2((struct ctrl_pkt *)antop_msg);//pablo3
+	     return;//pablo3
+	     } //pablo3
+	     else return; //pablo3
+
+
     }
     return 0;
 }
@@ -347,8 +419,7 @@ int antop_process_pkt(int fd, unsigned char *antop_msg){
 int antop_socket_read(int fd, unsigned char **antop_msg)
 {
 
-    struct in6_addr src = IN6ADDR_ANY_INIT;
-    struct in6_addr dst = IN6ADDR_ANY_INIT;
+    struct in6_addr src, dst;
     int i, len, hop_limit = 0, moveon = 0;      
     struct sockaddr_in6 src_addr;
     unsigned char buffer[IP_MAXPACKET];
@@ -360,14 +431,14 @@ int antop_socket_read(int fd, unsigned char **antop_msg)
     struct in6_pktinfo pktinfo;
 
     fprintf(stderr, "ANTOP SOCKET READ \n");
-    
+
     
     /* Get the information control message first */
     if ((len = recvmsg(fd, &msg, 0)) < 0) {
 	fprintf(stderr, "antop_socket_read: recvmsg ERROR! \n");
 	return -1;
     }         
-
+    
     memcpy(&src_addr, msg.msg_name, sizeof(struct sockaddr_in6));    
     *antop_msg = (unsigned char *) msg.msg_iov->iov_base;
     copy_in6_addr(&src, &src_addr.sin6_addr);   
@@ -418,11 +489,11 @@ int  antop_socket_init_mdns(int ifindex)
     int if_index;
     int sock;
     struct in6_pktinfo pkt_info;
-    struct in6_addr if_address = IN6ADDR_ANY_INIT;
+    struct in6_addr if_address;
 
-    char aux[5];
-
-    char *ifname = &aux;
+    char *aux;     //Pablo Torrado
+    aux=malloc(IFNAMSIZ);	//Pablo Torrado
+    char *ifname = aux;     //Pablo Torrado
     memset(ifname, 0, 5);
 
     ifname = if_indextoname(ifindex, ifname);
@@ -600,11 +671,12 @@ int  antop_socket_init_dns(int ifindex)
     int if_index;
     int sock;
     struct in6_pktinfo pkt_info;
-    struct in6_addr if_address = IN6ADDR_ANY_INIT;
+    struct in6_addr if_address;
 
-    char aux[5];
+    char *aux;  //Pablo Torrado
+    aux=malloc(IFNAMSIZ);	//Pablo Torrado
+    char *ifname = aux;  //Pablo Torrado
 
-    char *ifname = &aux;
     memset(ifname, 0, 5);
 
     ifname = if_indextoname(ifindex, ifname);

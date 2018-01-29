@@ -11,6 +11,7 @@ struct neighbor{
     int count;   
     struct neighbor *next;
     unsigned char prim_mask;
+    unsigned char prim_mask_inicial;//pablo4
 
     // This is 1 if the neighbor is available i.e. it is connected.
     unsigned char available;
@@ -56,5 +57,22 @@ struct src_nat{
     struct in6_addr src;
     struct src_nat *next;
 };
+
+struct neighbor_to_root {  //pablo
+      struct in6_addr addr;  //pablo
+      int distance; //pablo
+};//pablo
+
+
+//NEIGHBOR WITH SECOND LINK
+struct n_s_l {//pablo4
+	struct in6_addr addr; //pablo4
+	unsigned char mask; //pablo4
+	struct n_s_l *next;//pablo4
+};//pablo4
+
+
+
+
 
 

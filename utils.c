@@ -14,6 +14,7 @@ void copy_in6_addr(struct in6_addr *tgt, struct in6_addr *src)
     static char ip6_buf[4][40];
     static int count = 0;
     int which;
+
     which = (count%4);
     bzero(ip6_buf[which], 40);
     sprintf(ip6_buf[which], "%x:%x:%x:%x:%x:%x:%x:%x",

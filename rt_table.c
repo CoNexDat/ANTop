@@ -31,7 +31,7 @@
 // Pointer to the beggining of the routing table in user space
 struct route *route_t = NULL;
 // Pointer to surf the routing table in user space
-struct route *rt_ptr = NULL;
+struct route *rt_ptr;
 extern int ifindex;
 //struct rt_route_param rt_params;
 //static struct timer rt_route_t;
@@ -112,8 +112,7 @@ void attributes_show_ipv6(struct nlattr *tb[], char *print)
 //				fprintf(stderr, "metrics[%d]=%u ",i, mnl_attr_get_u32(tbx[i]));
 			}
 		}
-	}    
-	
+	}        
         if(rt_ptr->next == NULL){
             if((rt_ptr->next = malloc(sizeof(struct route))) == NULL){
                 fprintf(stderr, "Could not locate space for dumping routing table \n");
@@ -409,23 +408,23 @@ struct route *rt_table_dump(char print){
 
         
         
-        struct mnl_socket *nl = NULL;
-	char bufer[MNL_SOCKET_BUFFER_SIZE];
-	struct nlmsghdr *nlh = NULL;
-	struct rtmsg *rtm = NULL;
-	int ret = 0;
+        struct mnl_socket *nl;
+	char bufer[MNL_SOCKET_BUFFER_SIZE];   //********************************************************
+	struct nlmsghdr *nlh;
+	struct rtmsg *rtm;
+	int ret;
 	unsigned int seq, portid;
 
-        if (route_t == NULL){ // Check if it has already been created
-	  route_t = malloc(sizeof(struct route));
-	  if (route_t == NULL){
-	      fprintf(stderr, "Could not locate space for dumping routing table\n");
-	      return NULL;
-	  }
+        if(route_t == NULL){ // Check if it has already been created
+	
+        if((route_t = malloc(sizeof(struct route))) == NULL){
+            fprintf(stderr, "Could not locate space for dumping routing table\n");
+            return NULL;
         }
-        
+        }
         rt_ptr = route_t;
-
+               
+	
 	nlh = mnl_nlmsg_put_header(bufer);
 	nlh->nlmsg_type = RTM_GETROUTE;
 	nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP | NLM_F_ROOT;
@@ -458,8 +457,9 @@ struct route *rt_table_dump(char print){
 	while (ret > 0) {
                 
 //		ret = mnl_cb_run(bufer, ret, seq, portid, data_cb, NULL);
-            ret = mnl_cb_run(bufer, ret, seq, portid, data_cb, print);
 
+            ret = mnl_cb_run(bufer, ret, seq, portid, data_cb, print);                //************************
+		
 		if (ret <= MNL_CB_STOP){
                     
   //                  rt->next = NULL;
@@ -484,7 +484,7 @@ struct route *rt_table_dump(char print){
 	}
 
 	mnl_socket_close(nl);     
-
+	
 	return route_t;
 
 
@@ -605,7 +605,7 @@ int add_rt_route(struct in6_addr dst, struct in6_addr gw, unsigned char mask, in
 */
 
 	struct mnl_socket *nl;
-	char buf[MNL_SOCKET_BUFFER_SIZE];
+	char buf[MNL_SOCKET_BUFFER_SIZE];    //***************************************************
 	struct nlmsghdr *nlh;
 	struct rtmsg *rtm;
         struct timer *rt_route_t;
@@ -720,7 +720,7 @@ int del_rt_route( struct in6_addr dst, struct in6_addr gw, unsigned char mask, i
         src.s6_addr16[7]=0x6667;
 */
 	struct mnl_socket *nl;
-	char buf[MNL_SOCKET_BUFFER_SIZE];
+	char buf[MNL_SOCKET_BUFFER_SIZE];   //***************************************************
 	struct nlmsghdr *nlh;
 	struct rtmsg *rtm;
 

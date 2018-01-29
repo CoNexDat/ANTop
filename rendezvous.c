@@ -29,7 +29,8 @@ struct dns_q_queue {
     struct dns_q_queue *next;
 };
 
-
+extern int flag_mezcla;//pablo
+extern int flag_fragmentacion;//pablo2
 extern char *univ_addr;
 extern int hc_dim;
 extern struct in6_addr prim_addr;
@@ -72,6 +73,39 @@ void rv_tables_init() {
     return;
 }
 
+
+void hash_2_hc_X(char *u_addr, long long *hash, struct in6_addr *rel_addr) {
+
+struct in6_addr *addr;
+
+if(hash!=NULL)
+hash=9;
+
+addr=malloc(sizeof(struct in6_addr));
+memset(addr,0,sizeof(struct in6_addr));
+addr->s6_addr16[0] = 0x0120;
+addr->s6_addr16[1] = 0xb80d;//pablo3
+addr->s6_addr16[4] = 0x0040;
+addr->s6_addr16[7] = 0x0100;
+
+if(rel_addr!=NULL)
+memcpy(rel_addr,addr,sizeof(struct in6_addr));
+return;
+
+}
+
+
+void clear_rv_tables(){ //pablo5
+rv_table = NULL;//pablo5
+rv_servers=NULL;//pablo5
+rv_servers_dst=NULL;//pablo5
+cached_table=NULL;//pablo5
+dns=NULL;//pablo5
+memset(&main_rv_server,0,sizeof(struct in6_addr));//pablo5
+}//pablo5
+
+
+
 /**
  * @brief Hash the Universal Address generating a Hypercube address from it.
  *
@@ -93,6 +127,7 @@ void hash_2_hc(char *u_addr, long long *hash, struct in6_addr *rel_addr) {
     memset(addr, 0, sizeof (struct in6_addr));
 //    addr->s6_addr16[0] = 0x80fe;
     addr->s6_addr16[0] = 0x0120;
+    addr->s6_addr16[1] = 0xb80d;//pablo3
 
     //8 bytes for long long
 
@@ -155,7 +190,7 @@ void distribute_in_hc(int server_count, char *u_addr, int dst) {
     //each of which has the same sign as the argument. They return the fractional part, 
     //and store the integral part (as a floating-point number) in the object pointed to by second argument.
         
-    fract = modf(log2(server_count), &b_bits_aux);
+    fract = modf(log2(64/*server_count*/), &b_bits_aux); //pablo5
     branch_bits = b_bits_aux;    
     
     //fract = log2(server_count);
@@ -206,6 +241,7 @@ void distribute_in_hc(int server_count, char *u_addr, int dst) {
             rv_servers_dst = malloc(sizeof(struct rv_vector));
             rv_servers_aux = rv_servers_dst;
         }
+	else rv_servers_aux = rv_servers_dst;//pablo5
     }
 
 
@@ -248,7 +284,27 @@ void distribute_in_hc(int server_count, char *u_addr, int dst) {
         *addr_aux = htons((*addr_aux) & htons(mask));
         fprintf(stderr,"LA DIR ENMASCARADA VALE : %x\n", *addr_aux);
 
-        mask = i;
+        //mask = i;
+
+//----------------------------------------------------------- //pablo5
+	if(i==0){
+		mask=(5*u_addr[0]) % u_addr[strlen(u_addr)-1];
+		if(mask > 64)
+			mask=mask/4;
+		else if(mask<1)
+ 				mask=mask*7;
+			}
+		//mask = u_addr[strlen(u_addr)-1] *5; //i;
+	else{
+		mask=(7* u_addr[strlen(u_addr)-1]) % u_addr[0];
+		if(mask > 64)
+			mask=mask/4;
+		else if(mask<1)
+ 				mask=mask*9;
+			}
+		
+		//mask = u_addr[strlen(u_addr)-1] +  3i; //i;
+//-------------------------------------------------------------//pablo5
 
         fprintf(stderr,"LA NUEVA MASCARA VALE : %x\n", mask);
 
@@ -267,7 +323,7 @@ void distribute_in_hc(int server_count, char *u_addr, int dst) {
 //        (*addr_aux) | mask;
         rv_servers_aux->addr->s6_addr16[4] = htons(*addr_aux) | htons(mask);
 
-        rv_servers_aux->next = malloc(sizeof (struct in6_addr));
+        rv_servers_aux->next = malloc(sizeof (struct rv_vector));  //pablo5
         if (rv_servers_aux->next == NULL) {
             fprintf(stderr, "Distribute_in_hc: Could not locate space for RendezVous servers\n");
             return NULL;
@@ -291,11 +347,17 @@ void register_rv() {
 //    int min_dist = 1000;
 //    int dist;
 
-
     //First param is the number of servers. In this case, it will be log2(nodes) i.e. dimensions of the hc
     //    rv_servers=distribute_in_hc(hc_dim, univ_addr);
+
+   if(flag_mezcla==1)//pablo
+        return;//pablo
+    
+  if(flag_fragmentacion==1)//pablo2
+        return;//pablo2
+
     if (rv_servers == NULL) {
-        distribute_in_hc(hc_dim, univ_addr, 0);
+        distribute_in_hc(NSERVER_RV/*hc_dim*/, univ_addr, 0);//pablo5
 
         fprintf(stderr, "register_rv: Se generará el mensaje rv_register\n");
     }
@@ -549,7 +611,7 @@ struct in6_addr *solve_name(unsigned char *uaddr, int sock) {
 
     
     // After this the RV servers will be saved in rv_servers_dst.
-    distribute_in_hc(hc_dim, uaddr,1);
+    distribute_in_hc(NSERVER_RV/*hc_dim*/, uaddr,1); //pablo5
     // Now we have to determine the closest to the dst.
     for (rv_servers_aux = rv_servers_dst; rv_servers_aux != NULL; rv_servers_aux = rv_servers_aux->next) {
         memcpy(&(neigh.prim_addr), rv_servers_aux->addr, sizeof(struct in6_addr));
@@ -895,7 +957,7 @@ void answer_dns_query(unsigned char *data, int size, int dest_port, char solved,
         memcpy(data_aux2 + 6, aux, sizeof(struct in6_addr));
     } else{
         destination_aux.s6_addr16[0]=0x0120;
-    destination_aux.s6_addr16[1]=0x0000;
+    destination_aux.s6_addr16[1]=0xb80d;//pablo3
     destination_aux.s6_addr16[2]=0x0000;
     destination_aux.s6_addr16[3]=0x0000;
     destination_aux.s6_addr16[4]=0x0000;
@@ -1079,7 +1141,7 @@ void answer_dns_query(unsigned char *data, int size, int dest_port, char solved,
     else if(htons(src_port) == DNS_PORT){
         fprintf(stderr,"Se enviara un DNS response\n");
         destination.s6_addr16[0]=0x0120;
-    destination.s6_addr16[1]=0x0000;
+    destination.s6_addr16[1]=0xb80d;//pablo3
     destination.s6_addr16[2]=0x0000;
     destination.s6_addr16[3]=0x0000;
     destination.s6_addr16[4]=0x0000;

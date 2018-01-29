@@ -2,7 +2,7 @@
 antopDIR=$(shell pwd)
 
 SRC =	main.c libnetfilter_queue.c libnfnetlink.c attr.c nlmsg.c socket.c callback.c rt_table.c utils.c hcb_address.c antop_socket.c if_info.c if_addr.c timer_queue.c \
-        heart_beat.c pkt_handle.c rendezvous.c
+        heart_beat.c pkt_handle.c rendezvous.c funciones.c fragmentacion.c mezcla.c secondary.c ping6.c
 
 OBJS =	$(SRC:%.c=%.o)
 
@@ -15,8 +15,7 @@ KERNEL_INC=$(KERNEL_DIR)/include
 # ##### for RCP use: big-endian
 CC=gcc
 LD=ld
-OPTS= -Wall -O0 -lm -fno-stack-protector -g
-#-Wall -O0	-lm -fno-stack-protector -g
+OPTS=-Wall -O3
 
 # Comment out to disable debug operation...
 DEBUG=-g -DDEBUG
@@ -25,7 +24,7 @@ DEBUG=-g -DDEBUG
 XDEFS=-DDEBUG
 DEFS=-DCONFIG_GATEWAY #-DLLFEEDBACK
 CFLAGS=$(OPTS) $(DEBUG) $(DEFS) $(XDEFS)
-LD_OPTS=
+LD_OPTS=-lm
 
 #ifneq (,$(findstring CONFIG_GATEWAY,$(DEFS)))
 #SRC:=$(SRC) locality.c
@@ -51,7 +50,7 @@ $(OBJS): %.o: %.c Makefile
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 antopd: $(OBJS) Makefile
-	$(CC) $(CFLAGS) -o $@ $(OBJS) $(OPTS)
+	$(CC) $(CFLAGS) -o $@ $(OBJS) $(LD_OPTS)
 
 # Kernel module:
 

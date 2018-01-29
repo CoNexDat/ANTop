@@ -26,7 +26,7 @@ static inline int timeval_add_msec(struct timeval *t, long msec)
     if (!t)
 	return -1;
 
-    t->tv_usec += msec * 1000;
+    t->tv_usec += msec * 1000; //1000
     t->tv_sec += t->tv_usec / 1000000;
     t->tv_usec = t->tv_usec % 1000000;
     return 0;

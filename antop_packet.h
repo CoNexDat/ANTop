@@ -14,6 +14,12 @@
 #define RV_REG 9
 #define RV_ADDR_LOOKUP 10
 #define RV_ADDR_SOLVE 11
+#define FAR 12 //pablo2 (fragment address request)
+#define FAN 13 //pablo2 (fragment address notification)
+#define MAR1 14 //pablo3 (mix address request)
+#define MAR2 15 //pablo3
+#define MAN1 16 //pablo3 (mix address notifcation)
+#define MAN2 17 //pablo3
 
 
 
@@ -29,6 +35,7 @@ typedef struct additional_addr{
     struct in6_addr addr;
     unsigned char mask;
     unsigned char conn_count;
+    unsigned char red_numero;  //pablo
 
 };
 

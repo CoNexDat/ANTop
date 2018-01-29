@@ -16,6 +16,14 @@ extern unsigned char prim_mask;
 
 extern unsigned char sec_mask;
 
+extern unsigned char red_numero;//pablo
+
+extern int flag_mezcla;//pablo
+
+extern int flag_fragmentacion;//pablo2
+
+extern unsigned char prim_mask_inicial;//pablo4
+
 extern struct recovered_addr *rcvd_addr;
 
 struct timer hb_t;
@@ -31,6 +39,10 @@ struct neighbor *neigh_table = NULL;
 void send_hb(struct hb_param *params);
 void check_neighbors();
 void print_neighbors();
+
+
+
+
 
 void heart_beat_init(int *sock){
 
@@ -66,6 +78,12 @@ void send_hb(struct hb_param *par){
     struct ctrl_pkt *hb;
     struct in6_addr destination;
 
+    if(flag_fragmentacion == 0 && flag_mezcla == 0){//pablo2   //pablo3
+	check_if_i_am_only();//pablo4    	
+	check_neigh_of_secondary_address();//pablo4
+	check_n_s_l_table();//pablo4
+		}//pablo4
+
     hb = malloc(sizeof(struct ctrl_pkt));
 
     if(hb == NULL){
@@ -85,22 +103,28 @@ void send_hb(struct hb_param *par){
     destination.s6_addr16[7]=0x0100;
 
     hb->pkt_type_f = HB;
-    get_if_addr(&(hb->src_addr));
+    //get_if_addr(&(hb->src_addr));//pablo4
+    hb ->ad_addr.t_lenght=prim_mask_inicial;//pablo4 //agrego en este campo para mandar la informacion de la mascara inicial a los nodos
     hb ->ad_addr.mask = prim_mask;
+    hb ->ad_addr.red_numero=red_numero;//pablo
     memcpy(&(hb->prim_addr), &prim_addr, sizeof(struct in6_addr));
+    memcpy(&(hb->src_addr), &prim_addr, sizeof(struct in6_addr));//pablo4
+    memcpy(&(hb->ad_addr.addr), &sec_addr, sizeof(struct in6_addr));//pablo4 
 
     fprintf(stderr,"A heart beat will be send\n");
-
+    if(flag_fragmentacion == 0 &&  flag_mezcla == 0)//pablo2    //pablo3
     antop_socket_send((unsigned char *)hb, destination, sizeof(struct ctrl_pkt), 1, *(par->sock), ANTOP_PORT);
     
     if(sec_addr_flag){
         memcpy(&(hb->prim_addr), &sec_addr, sizeof(struct in6_addr));
         hb->ad_addr.mask = sec_mask;
-        memcpy(&(hb->src_addr), &sec_addr, sizeof(struct in6_addr));
+        //memcpy(&(hb->src_addr), &sec_addr, sizeof(struct in6_addr));//pablo4
         fprintf(stderr,"A heart beat will be send to secondary address");
-        antop_socket_send((unsigned char *)hb, destination, sizeof(struct ctrl_pkt), 1, *(par->sock), ANTOP_PORT);
-    }
-    return;
+	if(flag_fragmentacion == 0 && flag_mezcla == 0)//pablo2   //pablo3
+        antop_socket_send((unsigned char *)hb, destination, sizeof(struct ctrl_pkt), 1, *(par->sock), ANTOP_PORT);    
+	}
+
+   return;
 
 }
 
@@ -134,6 +158,7 @@ add:it->count =0;
     //it->visited_bitmap = 0;
     it->available = 1;
     it->prim_mask = hb->ad_addr.mask;
+    it->prim_mask_inicial = hb->ad_addr.t_lenght;//pablo4
     it->sec_addr_conn = 0;
     if(sec_flag)
         it->sec_addr_conn = 1;
@@ -197,8 +222,22 @@ struct neighbor *find_neighbor(struct in6_addr *p_addr){
 void process_hb(struct ctrl_pkt *hb){
 
     struct neighbor *aux;
-    int flag_aux=0;
+    struct neighbor aux2;//pablo4
+    struct neighbor aux3;//pablo4
+    struct in6_addr aux4;//pablo4
+    int flag_aux=0, flag_detector_mezcla;//pablo3
     struct in6_addr addr_aux;
+
+    if(flag_fragmentacion ==1) //pablo2
+	return; //pablo2
+
+    if(flag_mezcla==1)  //pablo3
+	return; //pablo3
+
+    flag_detector_mezcla=detector_de_mezcla(hb);//pablo3   Detector de mezcla
+    if(flag_detector_mezcla == -1 || flag_detector_mezcla ==1)//pablo3
+    	return;//pablo3
+
 
     if(!memcmp(&(hb->prim_addr), &prim_addr, sizeof(struct in6_addr))){
         fprintf(stderr,"HB from this primary address, nothing to be done\n");
@@ -219,18 +258,24 @@ void process_hb(struct ctrl_pkt *hb){
     }
 
     memcpy(&(aux->prim_addr), &(hb->prim_addr), sizeof(struct in6_addr));
+    memcpy(&(aux2.prim_addr), &(hb->src_addr), sizeof(struct in6_addr));//pablo4
+    memcpy(&(aux3.prim_addr), &(hb->ad_addr.addr), sizeof(struct in6_addr));//pablo4
+    memset(&aux4,0,sizeof(struct in6_addr));//pablo4  //como la dist(de algo , con el vector nulo) siempre da 1, entonces se acompaña de comparar si la direccion secundaria del paquete hb es nulo, entonces que obvie la operacion dist(prim_addr,  aux3) o dist(sec_addr,  aux3)
+
 
     //Do not offer sec address unless we have obtained a definitive primary address
 
     if(dist(&prim_addr, *aux) != 1 && prim_addr_flag){
         if(!sec_addr_flag){
             fprintf(stderr,"The distance to this node is not one, so it can't be our neighbor\n");
-            chk_sec_addr(aux);
+	    if(dist(&prim_addr, aux2)!=1 &&  (dist(&prim_addr, aux3)!=1 || !memcmp(&(hb->ad_addr.addr),&(aux4),sizeof(struct in6_addr))))//pablo4
+            	chk_sec_addr1(aux);// chk_sec_addr(aux); //pablo4
             return;
         }else{
             if(dist(&sec_addr, *aux) != 1){
                 fprintf(stderr,"The distance to this node sec addr is not one, so it can't be our neighbor\n");
-                chk_sec_addr(aux);
+		if(dist(&sec_addr, aux2)!=1 &&  (dist(&sec_addr, aux3)!=1 || !memcmp(&(hb->ad_addr.addr),&(aux4),sizeof(struct in6_addr))))//pablo4                
+			chk_sec_addr1(aux);//chk_sec_addr(aux);//pablo4
                 return;
             }
             flag_aux=1;
@@ -239,16 +284,7 @@ void process_hb(struct ctrl_pkt *hb){
 
     // First create the table if it doesn't exist
 
-    if(neigh_table == NULL){
-        fprintf(stderr, "Neighbor table does not exist. Creating it...\n");
-        neigh_table = malloc(sizeof(struct neighbor));
-        if(neigh_table == NULL){
-            fprintf(stderr,"Could not create the neighbor table\n");
-            return;
-        }
-        neigh_table->next = NULL;
-        memset(&(neigh_table->prim_addr), 0, sizeof(struct in6_addr));
-    }
+    init_neigh_table();
 
     // Now check if the neighbor already exists in table
 
@@ -265,6 +301,7 @@ void process_hb(struct ctrl_pkt *hb){
         fprintf(stderr,"The neighbor already existed in the table\n");
     }
     print_neighbors();
+    detector_de_fragmentacion();//pablo
     return;
 }
 
@@ -370,7 +407,7 @@ void recover_addr_space(struct neighbor *neigh){
     }    
     aux_rcvd->next = NULL;    
     memcpy(&(aux_rcvd->prim_addr), &(neigh->prim_addr), sizeof(struct in6_addr));    
-    aux_rcvd->prim_mask = neigh->prim_mask;
+    aux_rcvd->prim_mask = neigh->prim_mask_inicial;//neigh->prim_mask; //pablo4
     fprintf(stderr,"The following address has been recovered: %s\n", ip6_to_str(aux_rcvd->prim_addr));
     return;
 }
@@ -385,6 +422,7 @@ void print_neighbors(){
         fprintf(stderr, "NEIGHBOR: %s \n", ip6_to_str(it->prim_addr));
         fprintf(stderr, "NEIGHBOR COUNT: %d \n", it->count);
         fprintf(stderr, "NEIGHBOR MASK: %d \n", it->prim_mask);
+	fprintf(stderr, "NEIGHBOR INITIAL MASK: %d \n", it->prim_mask_inicial); //pablo4
     }
 
     return;
@@ -424,4 +462,38 @@ void check_neighbors(){
     return;
 }
 
+
+//RESTA UN ELEMENTO A LA TABLA DEL ESPACIO DE DIRECCIONES A RECUPERAR
+int del_rcvd_addr_table(struct in6_addr *addr/*, unsigned char mask*/){  //pablo4
+
+
+    struct recovered_addr *prev, *curr;
+    
+    for (prev = NULL, curr = rcvd_addr; curr != NULL; prev = curr, curr = curr->next) {	
+	if(!memcmp(&(curr->prim_addr), addr, sizeof(struct in6_addr))){
+		if (prev == NULL)
+			rcvd_addr=curr->next;
+		else prev->next=curr->next;			
+		return 0;
+			}
+     		}
+	return -1;
+}
+
+
+//INICIALIZA LA TABLA DE VECINOS
+void init_neigh_table(){  //pablo4
+
+if(neigh_table == NULL){
+        fprintf(stderr, "Neighbor table does not exist. Creating it...\n");
+        neigh_table = malloc(sizeof(struct neighbor));
+        if(neigh_table == NULL){
+            fprintf(stderr,"Could not create the neighbor table\n");
+            return;
+        }
+        neigh_table->next = NULL;
+        memset(&(neigh_table->prim_addr), 0, sizeof(struct in6_addr));
+    }
+
+}
 

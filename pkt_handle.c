@@ -95,6 +95,15 @@ int check_addr_space(struct in6_addr *addr, struct in6_addr *addr2, unsigned cha
     struct rt_aux_info *rt_inf, *previous;
     char print;
 
+    route_t=malloc(sizeof(struct route));   //Pablo Torrado    
+    route_t->next=NULL;  //Pablo Torrado
+    route_t->table=NULL;  //Pablo Torrado
+    route_t->distance=NULL;//Pablo Torrado
+    route_t->dst_mask=NULL;//Pablo Torrado
+    route_t->metric=NULL;//Pablo Torrado
+    memset(&(route_t->dst), 0, sizeof(struct in6_addr));//Pablo Torrado
+    memset(&(route_t->gtw), 0, sizeof(struct in6_addr));//Pablo Torrado
+  
     print = 0;
     rt_aux = rt_table_dump(print);
     rt_inf = malloc(sizeof(struct rt_aux_info));
@@ -402,8 +411,34 @@ void send_to_next_neighbor(unsigned char *pkt /* ,reverseEntry */ ){
     struct rt_route_param params;
     // If there are no neighbors, use the default gateway
 
+    struct in6_addr a1;  //Pablo Torrado
+
+    a1.s6_addr16[0]=0x0120;   //Pablo Torrado
+    a1.s6_addr16[1]=0xb80d;   //Pablo Torrado  //pablo3
+    a1.s6_addr16[2]=0x0000;   //Pablo Torrado
+    a1.s6_addr16[3]=0x0000;   //Pablo Torrado
+    a1.s6_addr16[4]=0x0000;   //Pablo Torrado
+    a1.s6_addr16[5]=0x0000;   //Pablo Torrado
+    a1.s6_addr16[6]=0x0000;   //Pablo Torrado
+    a1.s6_addr16[7]=0x0000;   //Pablo Torrado
+
+//CUANDO UN NODO CREAR Y PROCESA EL MISMO PAQUETE,  UTILIZA EL OPCIONAL HEADER. EN CAMBIO CUANDO PROCESA UN PAQUETE DE OTRO NODO, ESTE NO TIENE EL HEADER OPCIONAL. ENTONCES HAY QUE TENER EN CUENTA CUANDO SE PROCESA UN PAQUETE EN ESTE CASO
+//-----------------------------------------------------------------------------------//pablo5
+int UDP_PKT_OFF_aux;//pablo5
+if(memcmp(pkt+SRC_ADDR_OFFSET,&prim_addr, sizeof(struct in6_addr)))//pablo5
+	UDP_PKT_OFF_aux=UDP_PKT_OFF-32;//pablo5
+else//pablo5
+	UDP_PKT_OFF_aux=UDP_PKT_OFF;//pablo5
+//-----------------------------------------------------------------------------------//pablo5
+
 
     fprintf(stderr,"El paquete con destino %s entro a send_to_next_neighbor\n",ip6_to_str(*((struct in6_addr *)(pkt + DST_ADDR_OFFSET))));
+
+
+    //if(*(pkt + UDP_PKT_OFF) == RV_REG || *(pkt + UDP_PKT_OFF) == RV_ADDR_LOOKUP || *(pkt + UDP_PKT_OFF) == RV_ADDR_SOLVE)//Pablo Torrado  ACA FILTRO LOS PAQUETES RENDEZ VOUS
+	//return;    //Pablo Torrado
+
+
 
     if(neigh_table == NULL){
         fprintf(stderr,"There are no neighbors to send the packet\n");
@@ -427,7 +462,7 @@ void send_to_next_neighbor(unsigned char *pkt /* ,reverseEntry */ ){
         memcpy(&(aux_addr), pkt + DST_ADDR_OFFSET, sizeof(struct in6_addr));
         // Add a rt entry to this dst, without nh. It will be completed lately
         // Use the primary addr as temporary nh to identify this incomplete entry
-        add_rt_route(aux_addr, prim_addr, 128, MAX_TTL);
+        add_rt_route(aux_addr, a1/*prim_addr*/, 128, MAX_TTL); //Pablo Torrado
 
 
         fprintf(stderr,"add rt route next 1, DST: %s; GW: %s\n",ip6_to_str(aux_addr), ip6_to_str(prim_addr));
@@ -584,7 +619,7 @@ void send_to_next_neighbor(unsigned char *pkt /* ,reverseEntry */ ){
                 // Get the distance to the destination
                 // Is rendez-vous?
                 aux_c = *(pkt + FLAGS_OFFSET);
-                d = (aux_c & MASK_RV) ? dist_w_mask(pkt+DST_ADDR_OFFSET, *neigh_t_aux) : dist(pkt+DST_ADDR_OFFSET, *neigh_t_aux);
+                d = (/*aux_c & MASK_RV*/(*(pkt + UDP_PKT_OFF_aux) == RV_REG || *(pkt + UDP_PKT_OFF_aux) == RV_ADDR_LOOKUP || *(pkt + UDP_PKT_OFF_aux) == RV_ADDR_SOLVE)) ? dist_w_mask(pkt+DST_ADDR_OFFSET, *neigh_t_aux) : dist(pkt+DST_ADDR_OFFSET, *neigh_t_aux);//pablo5
 
                 fprintf(stderr,"Distance to neighbor INDEX %d %s; %d\n", i, ip6_to_str(neigh_t_aux->prim_addr), d);
 
@@ -821,8 +856,8 @@ void set_is_antop(unsigned char *pkt){
 //Check if addr1, is under the address space of addr2/mask
 
 int check_addr_space(struct in6_addr *addr, struct in6_addr *addr2, unsigned char mask_addr){
-    struct in6_addr *address1 = NULL;
-    struct in6_addr *address2 = NULL;
+    struct in6_addr *address1;
+    struct in6_addr *address2;
     uint16_t mask, j;
     int words, bits, i;
     unsigned char aux;
@@ -850,8 +885,8 @@ int check_addr_space(struct in6_addr *addr, struct in6_addr *addr2, unsigned cha
     fprintf(stderr,"BITS: %d\n", bits);
     fprintf(stderr,"MASK: %d\n", mask);
 
-//    fprintf(stderr,"ADDRESS 2: %x\n", address2->s6_addr16[i+4]);
- //   fprintf(stderr,"ADDRESS 1: %x\n", address1->s6_addr16[i+4]);
+    fprintf(stderr,"ADDRESS 2: %x\n", address2->s6_addr16[i+4]);
+    fprintf(stderr,"ADDRESS 1: %x\n", address1->s6_addr16[i+4]);
 
     for(i = 0; i < words; i++){
         if(memcmp(&(address2->s6_addr16[i+4]), &(address1->s6_addr16[i+4]), sizeof(uint16_t))){
@@ -883,7 +918,17 @@ int rv_route(unsigned char *pkt){
     unsigned char aux;
     struct recovered_addr *rcvd_addr_aux;
 
-    aux=*(pkt + UDP_PKT_OFF);
+//CUANDO UN NODO CREAR Y PROCESA EL MISMO PAQUETE,  UTILIZA EL OPCIONAL HEADER. EN CAMBIO CUANDO PROCESA UN PAQUETE DE OTRO NODO, ESTE NO TIENE EL HEADER OPCIONAL. ENTONCES HAY QUE TENER EN CUENTA CUANDO SE PROCESA UN PAQUETE EN ESTE CASO
+//-----------------------------------------------------------------------------------//pablo5
+int UDP_PKT_OFF_aux;//pablo5
+if(memcmp(pkt+SRC_ADDR_OFFSET,&prim_addr, sizeof(struct in6_addr)))//pablo5
+	UDP_PKT_OFF_aux=UDP_PKT_OFF-32;//pablo5
+else//pablo5
+	UDP_PKT_OFF_aux=UDP_PKT_OFF;//pablo5
+//-----------------------------------------------------------------------------------//pablo5
+
+
+    aux=*(pkt + UDP_PKT_OFF_aux);//pablo5
 
 
     // For RV pkts, if the destination belongs to the current address space, then we should process the packet.
@@ -961,8 +1006,6 @@ int rv_route(unsigned char *pkt){
     }
 
 
-
-
     fprintf(stderr,"AUX VALE %d\n", aux);
 
     //If we didn't leave the function it means that we need to process the packet.
@@ -971,13 +1014,13 @@ int rv_route(unsigned char *pkt){
 
         case RV_REG:
             fprintf(stderr,"An RV_REG pkt with a succesor address has been received or is being sent\n");
-            rv_table_add((struct rv_ctrl_pkt *)(pkt + UDP_PKT_OFF));
+            rv_table_add((struct rv_ctrl_pkt *)(pkt + UDP_PKT_OFF_aux));//pablo5
             print_rv_table();
             break;
 
         case RV_ADDR_LOOKUP:
             fprintf(stderr,"An RV_ADDR_LOOKUP pkt with a succesor address has been received or is being sent\n");
-            answer_rv_query((struct ctrl_pkt *)(pkt + UDP_PKT_OFF), socket_global);
+            answer_rv_query((struct ctrl_pkt *)(pkt + UDP_PKT_OFF_aux), socket_global);//pablo5
             break;
     }
 
@@ -1016,6 +1059,17 @@ int route(unsigned char *pkt, u_int8_t hook){
     reverse_entry = NULL;
     char print;
 
+//CUANDO UN NODO CREAR Y PROCESA EL MISMO PAQUETE,  UTILIZA EL OPCIONAL HEADER. EN CAMBIO CUANDO PROCESA UN PAQUETE DE OTRO NODO, ESTE NO TIENE EL HEADER OPCIONAL. ENTONCES HAY QUE TENER EN CUENTA CUANDO SE PROCESA UN PAQUETE EN ESTE CASO
+//-----------------------------------------------------------------------------------//pablo5
+int UDP_PKT_OFF_aux;//pablo5
+if(memcmp(pkt+SRC_ADDR_OFFSET,&prim_addr, sizeof(struct in6_addr)))//pablo5
+	UDP_PKT_OFF_aux=UDP_PKT_OFF-32;//pablo5
+else//pablo5
+	UDP_PKT_OFF_aux=UDP_PKT_OFF;//pablo5
+//-----------------------------------------------------------------------------------//pablo5
+
+
+
     //If the packet is multicast it should use the default gateway
 
 
@@ -1023,7 +1077,7 @@ int route(unsigned char *pkt, u_int8_t hook){
     //If this are the packets involved in getting a primary address, let them
     // go through the default gateway
 
-    if(*(pkt + UDP_PKT_OFF) > 0 && *(pkt + UDP_PKT_OFF) < 5){
+    if(*(pkt + UDP_PKT_OFF_aux) > 0 && *(pkt + UDP_PKT_OFF_aux) < 5){//pablo5
         return RV_ACCEPT;
     }
 
@@ -1043,7 +1097,7 @@ int route(unsigned char *pkt, u_int8_t hook){
 
     // Check if the packet was returned.
     if(hook == NF_IP6_PRE_ROUTING){
-
+/*//pablo5
         if((aux & MASK_IR) != 0){
             //Is returned...
             //Turn off IS flag
@@ -1052,7 +1106,7 @@ int route(unsigned char *pkt, u_int8_t hook){
             send_to_next_neighbor(pkt);
             return RV_ACCEPT;
         }
-
+*///pablo5
         // If the packet came back to the source and the hook is Pre Routing, return it.
 
 
@@ -1067,7 +1121,6 @@ int route(unsigned char *pkt, u_int8_t hook){
     }
 
 
-
     //******************************************************************************************
     // AQUI HAY QUE CHEQUEAR QUE EFECTIVAMENTE LOS PAQUETES RV QUE SALEN CON UN DESTINO DENTRO DE NUESTRO ESPACIO
     // DIRECCIONES, SEAN PROCESADOS LOCALMENTE.
@@ -1078,7 +1131,7 @@ int route(unsigned char *pkt, u_int8_t hook){
     fprintf(stderr,"We will check if the packet is RV and needs to be procesed by local node\n");
 
     //If the packet is RV, and we are not the destination node, check if we need to process it anyway.
-        if((aux & MASK_RV) != 0 && (memcmp(pkt + DST_ADDR_OFFSET, &prim_addr, sizeof(struct in6_addr)))){
+        if(/*(aux & MASK_RV) != 0*/(*(pkt + UDP_PKT_OFF_aux) == RV_REG || *(pkt + UDP_PKT_OFF_aux) == RV_ADDR_LOOKUP || *(pkt + UDP_PKT_OFF_aux) == RV_ADDR_SOLVE) && (memcmp(pkt + DST_ADDR_OFFSET, &prim_addr, sizeof(struct in6_addr)))){//pablo5
             fprintf(stderr, "The packet is RV\n");
             fprintf(stderr,"The primary mask is %d\n", prim_mask);
             // We must check if the destination is a RV server in our address space. If that is the case,
@@ -1230,12 +1283,12 @@ int route(unsigned char *pkt, u_int8_t hook){
         return RV_ACCEPT;
 
     // If the destination address is an available neighbor, let it go through the default gateway.
-    for(neigh_t_aux=neigh_table; neigh_t_aux!=NULL; neigh_t_aux=neigh_t_aux->next)
+/*    for(neigh_t_aux=neigh_table; neigh_t_aux!=NULL; neigh_t_aux=neigh_t_aux->next)
         if(!memcmp(&neigh_t_aux->prim_addr, pkt+DST_ADDR_OFFSET,sizeof(struct in6_addr)) && neigh_t_aux->available){
             fprintf(stderr, "\nThe destination is a neighbor !!!!\n");
             return RV_ACCEPT;
         }
-
+*///pablo5
     // Find if there are entries to the packet destination
     print = 0;
     rt = rt_table_dump(print);
@@ -1314,6 +1367,11 @@ unsigned char *print_pkt (struct nfq_data *tb, int *pkt_size, int *id, unsigned 
         char *tcp_hdr = NULL;
         struct src_nat *src_nat_aux;
 
+//SE UTILIZ PARA EL LOCAL IN
+	struct neighbor *it;//pablo5
+	struct in6_addr gw;//pablo5
+        int distancia=99;//pablo5
+
         // By default we accept the packet to go through the IPv6 hooks
 
         *accept = 1;
@@ -1352,7 +1410,7 @@ unsigned char *print_pkt (struct nfq_data *tb, int *pkt_size, int *id, unsigned 
 //        fprintf(stderr,"\nSRC : %s \n", ip6_to_str(addr_aux));
 
         data=malloc((size_t)ret+32);
-        memset(data, 0, ret+32);
+        memset(data, 0, ret+32);       
         memcpy(data, data_aux, (size_t)ret);
 
 //        icmp = (struct icmp6_hdr *) (data_aux +40);
@@ -1360,23 +1418,38 @@ unsigned char *print_pkt (struct nfq_data *tb, int *pkt_size, int *id, unsigned 
         switch(ph->hook){
             case NF_IP6_FORWARD:
                 fprintf(stderr,"El paquete entro en FORWARD y serà debuggeado\n");
-//                debug_pkt(data);
+                debug_pkt(data);
                 (*pkt_size) = ret;
+		route(data, ph->hook);//pablo5
                 break;
             case NF_IP6_LOCAL_IN:
                 fprintf(stderr,"El paquete entro en LOCAL IN y sera debuggeado\n");
                 debug_pkt(data);
                 (*pkt_size) = ret;
-
+//CUANDO LLEGA UN ICMP ECHO REQUES, EL LOCAL IN DEBE TOMARLO Y YA CREAR LA RUTA PARA EL ECHO REPLY
+//--------------------------------------------------------------------------------------------------------- //pablo5
+		if(ip->ip6_nxt==IPPROTO_ICMPV6){
+                    icmp = (struct icmp6_hdr *) (data_aux +40);	
+                    if (icmp->icmp6_type == 128){
+			for(it=neigh_table; it != NULL; it=it->next){
+				if(distancia>dist((struct in6_addr *)(data + SRC_ADDR_OFFSET),*it)){
+					distancia=dist((struct in6_addr *)(data + SRC_ADDR_OFFSET),*it);
+					memcpy(&gw,&(it->prim_addr),sizeof(struct in6_addr));
+								}
+							}
+                	add_rt_route(*(struct in6_addr *)(data + SRC_ADDR_OFFSET), gw, 128, MAX_TTL);
+				}
+					}
+//---------------------------------------------------------------------------------------------------------//pablo5
                 break;
 
             case NF_IP6_PRE_ROUTING:
                 aux = *(data + FLAGS_OFFSET);
-                if((aux & MASK_IA) != 0){
+                //if((aux & MASK_IA) != 0){  //pablo5
  //                   (*pkt_size)=ret;
                     if(route(data, ph->hook)==RV_DROP){
                         *accept = 0;
-                    }
+                    //} //pablo5
                 }
                 if(!memcmp(data+SRC_ADDR_OFFSET, data+DST_ADDR_OFFSET, sizeof(struct in6_addr))){
  //                   debug_pkt(data);
@@ -1532,7 +1605,7 @@ unsigned char *print_pkt (struct nfq_data *tb, int *pkt_size, int *id, unsigned 
                                 //This is the address of the DNS server.
 
                                 address_auxiliar.s6_addr16[0]=0x0120;
-                                address_auxiliar.s6_addr16[1]=0x0000;
+                                address_auxiliar.s6_addr16[1]=0xb80d;//pablo3
                                 address_auxiliar.s6_addr16[2]=0x0000;
                                 address_auxiliar.s6_addr16[3]=0x0000;
                                 address_auxiliar.s6_addr16[4]=0x0000;
@@ -1659,10 +1732,10 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *
                 ret = nfq_set_verdict(qh, id, NF_ACCEPT, pkt_size, data_aux);
                 break;
             case NF_IP6_LOCAL_OUT:
-//              ret= nfq_set_verdict(qh, id, NF_ACCEPT, 0,NULL);
+              ret= nfq_set_verdict(qh, id, NF_ACCEPT, 0,NULL);    //Pablo Torrado  (el cambio que hice fue agregar esta linea)
 //              ret= nfq_set_verdict(qh, id, NF_ACCEPT, pkt_size + add_local_out, data_aux); // EN ESTE CASO SUMAMOS 16 BYTES DE DESTINATION OPTIONS
  //               fprintf(stderr,"ENTRO UN PAQUETE AL HOOK LOCAL OUT\n");
-                ret = nfq_set_verdict(qh, id, NF_ACCEPT, pkt_size, data_aux); // EN ESTE CASO SUMAMOS 16 BYTES DE DESTINATION OPTIONS
+//                ret = nfq_set_verdict(qh, id, NF_ACCEPT, pkt_size, data_aux); // EN ESTE CASO SUMAMOS 16 BYTES DE DESTINATION OPTIONS //Pablo Torrado  (el cambio que hice fue comentar esta linea)
 
  //               ret= nfq_set_verdict(qh, id, NF_ACCEPT, 130,data_aux);
  //               fprintf(stderr,"NFQ_SET_VERDICT MODIFIED PAYLOAD VALUE LOCAL OUT: %d \n",ret);

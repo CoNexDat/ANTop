@@ -176,7 +176,7 @@ extern int mnl_cb_run(const void *buf, size_t numbytes, unsigned int seq,
 
 extern int mnl_cb_run2(const void *buf, size_t numbytes, unsigned int seq,
 		       unsigned int portid, mnl_cb_t cb_data, void *data,
-		       mnl_cb_t *cb_ctl_array, unsigned int cb_ctl_array_len);
+		      mnl_cb_t *cb_ctl_array, unsigned int cb_ctl_array_len);  //(*)  Se agrego "conts"
 
 /*
  * other declarations

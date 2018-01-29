@@ -51,21 +51,20 @@ static const mnl_cb_t default_cb_array[NLMSG_MIN_TYPE] = {
 static inline int
 __mnl_cb_run(const void *buf, size_t numbytes, unsigned int seq,
 	     unsigned int portid, mnl_cb_t cb_data, void *data,
-	     mnl_cb_t *cb_ctl_array, unsigned int cb_ctl_array_len)
+	      mnl_cb_t *cb_ctl_array, unsigned int cb_ctl_array_len)   //(*) se agrego "const"
 {
 	int ret = MNL_CB_OK, len = numbytes;
 	const struct nlmsghdr *nlh = buf;
 
-        
 
-	while (mnl_nlmsg_ok(nlh, len)) {                //OK
+	while (mnl_nlmsg_ok(nlh, len)) {              //OK
 		/* check message source */
 		if (!mnl_nlmsg_portid_ok(nlh, portid)) {
 			errno = ESRCH;
 			return -1;
 		}
 		/* perform sequence tracking */
-		if (!mnl_nlmsg_seq_ok(nlh, seq)) {      //OK
+		if (!mnl_nlmsg_seq_ok(nlh, seq)) {     //OK
 			errno = EPROTO;
 			return -1;
 		}
@@ -77,13 +76,13 @@ __mnl_cb_run(const void *buf, size_t numbytes, unsigned int seq,
 				if (ret <= MNL_CB_STOP)
 					goto out;
 			}
-		} else if (nlh->nlmsg_type < cb_ctl_array_len) {
+		} else if (nlh->nlmsg_type < cb_ctl_array_len) { 
 			if (cb_ctl_array && cb_ctl_array[nlh->nlmsg_type]) {
 				ret = cb_ctl_array[nlh->nlmsg_type](nlh, data);
 				if (ret <= MNL_CB_STOP)
 					goto out;
 			}
-		} else if (default_cb_array[nlh->nlmsg_type]) {
+		} else if (default_cb_array[nlh->nlmsg_type]) { 
 			ret = default_cb_array[nlh->nlmsg_type](nlh, data);
 			if (ret <= MNL_CB_STOP)
 				goto out;
@@ -127,7 +126,7 @@ out:
 EXPORT_SYMBOL int
 mnl_cb_run2(const void *buf, size_t numbytes, unsigned int seq,
 	    unsigned int portid, mnl_cb_t cb_data, void *data,
-	    mnl_cb_t *cb_ctl_array, unsigned int cb_ctl_array_len)
+	     mnl_cb_t *cb_ctl_array, unsigned int cb_ctl_array_len)  //(*) se agrego "const"
 {
 	return __mnl_cb_run(buf, numbytes, seq, portid, cb_data, data,
 			    cb_ctl_array, cb_ctl_array_len);

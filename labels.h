@@ -183,9 +183,10 @@
 #define RV_DROP 2
 
 
-
-
-
+/*
+NUMEROS DE SERVERS A DISTRIBUIR EN EL SERVICIO RENDEZ VOUS   //pablo5
+*/
+#define NSERVER_RV 2 //pablo5
 
 
 

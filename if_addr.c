@@ -111,12 +111,12 @@ static int data_cb(const struct nlmsghdr *nlh, void *data)
 
 int get_if_addr(struct in6_addr *if_addr){
 
-        struct mnl_socket *nl =NULL;
-	char buf[MNL_SOCKET_BUFFER_SIZE];
-	struct nlmsghdr *nlh = NULL;
-	struct rtgenmsg *rt = NULL;
-	int ret = 0;
-	unsigned int seq, portid = 0;
+      struct mnl_socket *nl;
+	char buf[MNL_SOCKET_BUFFER_SIZE];   //(*)
+	struct nlmsghdr *nlh;
+	struct rtgenmsg *rt;
+	int ret;
+	unsigned int seq, portid;
 
 
 
@@ -232,9 +232,9 @@ int set_if_addr(struct in6_addr *if_addr){
 
 int set_if_addr2(struct in6_addr *if_addr/*, int ifindex*/, int change_addr){
 
-        struct mnl_socket *nl = NULL;
+        struct mnl_socket *nl;
 	char buf[MNL_SOCKET_BUFFER_SIZE];
-	struct nlmsghdr *nlh = NULL;
+	struct nlmsghdr *nlh;
 /*
 	struct rtgenmsg *rt;
 */
@@ -265,7 +265,7 @@ int set_if_addr2(struct in6_addr *if_addr/*, int ifindex*/, int change_addr){
         ifr6.ifr6_prefixlen = 64;
         ifr6.ifr6_ifindex = ifindex;
 
-        if(change_addr){
+        if(change_addr){       //Pablo Torrado --> Posible error
 
         if (ioctl(fd, SIOCDIFADDR, &ifr6) < 0) {
 		    perror("SIOCDIFADDR");
@@ -280,9 +280,10 @@ int set_if_addr2(struct in6_addr *if_addr/*, int ifindex*/, int change_addr){
         ifr6.ifr6_prefixlen = 64;   
         
 
-        if (ioctl(fd, SIOCSIFADDR, &ifr6) < 0) {
+        if (ioctl(fd, SIOCSIFADDR, &ifr6) < 0) {   //Pablo Torrado --> posible error
 		    perror("SIOCSIFADDR");
-		}
+		} 
+	
 	mnl_socket_close(nl);
 
 	return 0;
